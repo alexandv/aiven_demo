@@ -24,7 +24,7 @@ exist before you start the application
 ## a. Clone this git repo
 
 ```shell
-git clone <insert_url>
+git clone https://github.com/alexandv/aiven_demo
 ```
 
 Then switch to the directory.
