@@ -16,4 +16,6 @@ CREATE TABLE event (
     description varchar(200)
 );
 
+--------- INSERTS
+
 INSERT INTO event_type(id,name) VALUES (1,'aiven');
