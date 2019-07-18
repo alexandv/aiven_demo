@@ -44,7 +44,7 @@ A recent verion of docker with the daemon currently running on your machine
 ### - Installation:
 First build the image using the following command while inside the root directory:
 ```shell
-docker build -t aiven
+docker build . -t aiven
 ```
 
 This could take a few minutes depending on how fast your connection is.
