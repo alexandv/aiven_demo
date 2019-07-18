@@ -1,20 +1,21 @@
 import psycopg2
 import logging
 
+import sys
+
+import time
+
 logger = logging.getLogger(__name__)
 
-HOST = 'pg-2f300e69-alexandv-8e59.aivencloud.com'
-PORT = 12105
-DBNAME = 'defaultdb'
-USER = 'avnadmin'
-PASSWORD = 'tavirlyf9q8bejxsHide'
-
-
 class EventDB:
+    '''
+        Class to handle connection to the databases which stores events
+        It support the context manager protocol and can thus be used with the "with" keyword
+    '''
     MAX_CONN_ATTEMPT = 5
     SLEEP_BETWEEN_RETRIES_SEC = 5
 
-    def __init__(self, autocommit = True, host=HOST, port=PORT, dbname=DBNAME, user=USER, password=PASSWORD):
+    def __init__(self, host, port, dbname, user, password, sslcert):
         self.conn = None
         self.cur = None
 
@@ -23,58 +24,81 @@ class EventDB:
         self.dbname = dbname
         self.user = user
         self.password = password
+        self.sslcert = sslcert
 
     def __enter__(self):
         self.connect()
 
         return self
 
-    def __exit__(self, type, value, traceback):
-        if type is None and not self.conn.autocommit:
-            self.conn.commit()
-
-        if type is not None and not self.conn.autocommit:
-            self.conn.rollback()
-
+    def __exit__(self,exc_type, exc_value, tb):
         self.close_conn()
 
     def connect(self):
-        for attempt_num in range(1,BettingDB.MAX_CONN_ATTEMPT + 1):
+        for attempt_num in range(1,EventDB.MAX_CONN_ATTEMPT + 1):
             try:
-                if self.bettingdbpool is not None:
-                    logger.info("Getting connection from pool.")
-                    self.conn = self.bettingdbpool.pool.getconn()
-                else:
-                    logger.info("Connecting to DB {}:{}. Attempt number {}/{}".format(self.host, self.port, attempt_num,
+                logger.info("Connecting to DB {}:{}. Attempt number {}/{}".format(self.host, self.port, attempt_num,
                                                                                       EventDB.MAX_CONN_ATTEMPT))
-                    self.conn = psycopg2.connect("dbname="+self.dbname+" user="+self.user+" password="+self.password+" host="+self.host+" port="+str(self.port),cursor_factory=NamedTupleCursor)
+                self.conn = psycopg2.connect("dbname="+self.dbname+" user="+self.user+" password="+self.password+" host="+self.host+" port="+str(self.port) + " sslmode=verify-full sslrootcert="+self.sslcert)
             except psycopg2.OperationalError as e:
                 logger.error("Error while connecting to postgres {}".format(e))
-                if attempt_num == BettingDB.MAX_CONN_ATTEMPT:
+                if attempt_num == EventDB.MAX_CONN_ATTEMPT:
                     logger.error("Attempts exhausted. Exiting")
                     sys.exit(1)
-                logger.info("Sleeping {} seconds".format(BettingDB.SLEEP_BETWEEN_RETRIES_SEC))
-                time.sleep(BettingDB.SLEEP_BETWEEN_RETRIES_SEC)
+                logger.info("Sleeping {} seconds".format(EventDB.SLEEP_BETWEEN_RETRIES_SEC))
+                time.sleep(EventDB.SLEEP_BETWEEN_RETRIES_SEC)
             else:
                 break
 
+        self.conn.autocommit = True
         self.cur = self.conn.cursor()
 
 
     def close_conn(self):
         self.cur.close()
-        if self.bettingdbpool is not None:
-            self.bettingdbpool.pool.putconn(self.conn)
-            logger.info("DB connection released from pool")
-        else:
-            self.conn.close()
-            logger.info("DB connection closed")
+
+        self.conn.close()
+        logger.info("DB connection closed")
 
 
-    def insert_event(self) -> List[BetfairMarket]:
-        self.cur.execute(f"INSERT INTO event VALUES ;")
-        markets = self.cur.fetchall()
+    def _get_max_id(self, tablename):
+        """
+            Helper method to retrieve the maximum id in a tablename.
+            This is useful for getting the id of a primary key
+        """
+        self.cur.execute('select coalesce(max (id),0) as maxid from ' + tablename)
+        maxid = self.cur.fetchone()
 
-        return [BetfairMarket(market.id,market.name,market.betfair_id,market.is_finite_runners) for market in markets]
+        return maxid[0]
 
 
+    def insert_event(self, description: str) -> None:
+        maxid = self._get_max_id('event')
+
+        sql_event = "insert into event (id,event_type_id,description) values (%s,%s,%s);"
+        self.cur.execute(sql_event, (maxid + 1, 1, description))
+
+
+def get_insert_event_to_db(host, port, dbname, user, password, sslcert):
+    '''
+    This will return a function that can be used as a callback to insert an event to the DB
+
+    :param host: Hostname for the database
+    :param port: Port to connect to
+    :param dbname: Database name
+    :param user: Username to connect to
+    :param password: Password for the connection
+    :param sslcert: The root ca certificate used to authenticate the server
+    :return:  A function that can be used to insert a message into the event table
+    '''
+
+    def insert_event_to_db(message: str):
+        '''
+            This function is used to insert the event into the DB
+            It will handle opening the connection and logging
+        '''
+        with EventDB(host, port, dbname, user, password, sslcert) as db:
+            db.insert_event(message)
+            logger.info("Inserted event into DB: {}".format(message))
+
+    return insert_event_to_db

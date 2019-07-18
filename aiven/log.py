@@ -1,5 +1,6 @@
 import json
 import logging.config
+from logging import INFO
 import os
 
 def setupLogging(
@@ -7,9 +8,6 @@ def setupLogging(
         level=None,
         env_key='WATO_LOG_CFG'
     ):
-    logging.TRACE = 9
-    logging.addLevelName(logging.TRACE, "TRACE")
-
     value = os.getenv(env_key, None)
     if value is not None:
         path = value
@@ -20,4 +18,4 @@ def setupLogging(
                 config["root"]["level"] = level
         logging.config.dictConfig(config)
     else:
-        logging.basicConfig(level=level)
+        logging.basicConfig(level=INFO)

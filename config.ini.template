@@ -1,0 +1,13 @@
+[kafka]
+bootstrap_servers=<server:port>
+ssl_cafile=<path to root certificate>
+ssl_certfile=<path to the certificate>
+ssl_keyfile=<path to the keyfile>
+
+[postgres]
+host=<hostname or ip address>
+port=<port>
+dbname=<database name>
+user=<username>
+password=<password>
+sslcert=<path to root certificate>
